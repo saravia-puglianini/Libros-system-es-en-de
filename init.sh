@@ -232,6 +232,94 @@ get_page_count() {
 
 
 # =========================================================
+# OPTIMIZAR PDFs PESADOS
+# =========================================================
+optimize_heavy_pdfs() {
+    if ! command -v gs >/dev/null 2>&1; then
+        echo "⚠️  Ghostscript (gs) no está instalado. Se omitirá la optimización de tamaño."
+        return
+    fi
+
+    # Buscar PDFs de más de 5MB
+    local found_heavy=false
+    while IFS= read -r -d '' pdf; do
+        # Evitar archivos temporales o directorios .git
+        if [[ "$pdf" =~ /\.git/ || "$pdf" =~ /personal/tmp_ ]]; then
+            continue
+        fi
+        local size_mb=$(du -m "$pdf" | awk '{print $1}')
+        if [ "$size_mb" -ge 5 ]; then
+            found_heavy=true
+            break
+        fi
+    done < <(find -L "$ABS_DIR" -maxdepth 1 -type f \( -iname "*.pdf" -o -iname "*.PDF" \) -print0)
+
+    if [ "$found_heavy" = false ]; then
+        return
+    fi
+
+    echo ""
+    echo "⚖️  Se detectaron PDFs de más de 5MB en su biblioteca."
+    echo "¿Desea optimizar el tamaño de sus PDFs antes de continuar? (Recomendado para PDFs editados con GIMP)"
+    echo "[0] No optimizar (continuar normal)"
+    echo "[1] Calidad Ebook (150 DPI - Recomendado, mantiene buena calidad para OCR)"
+    echo "[2] Calidad Pantalla (72 DPI - Tamaño mínimo, compresión máxima)"
+    echo ""
+    
+    local opt_choice="0"
+    local input_opt=""
+    read -r -p "Seleccione opción [0/1/2] (Por defecto: 0): " input_opt || true
+    if [[ "$input_opt" == "1" ]]; then
+        opt_choice="ebook"
+    elif [[ "$input_opt" == "2" ]]; then
+        opt_choice="screen"
+    fi
+
+    if [ "$opt_choice" = "0" ]; then
+        echo "⏭️  Omitiendo optimización."
+        return
+    fi
+
+    echo "⚙️  Optimizando PDFs con calidad: $opt_choice..."
+    while IFS= read -r -d '' pdf; do
+        if [[ "$pdf" =~ /\.git/ || "$pdf" =~ /personal/tmp_ ]]; then
+            continue
+        fi
+        local size_mb=$(du -m "$pdf" | awk '{print $1}')
+        if [ "$size_mb" -lt 5 ]; then
+            continue
+        fi
+        
+        local filename=$(basename "$pdf")
+        echo "   📉 Optimizando $filename ($size_mb MB)..."
+        
+        local tmp_opt=$(mktemp --suffix=.pdf)
+        if gs -sDEVICE=pdfwrite \
+              -dCompatibilityLevel=1.4 \
+              -dPDFSETTINGS="/$opt_choice" \
+              -dNOPAUSE -dQUIET -dBATCH \
+              -sOutputFile="$tmp_opt" \
+              "$pdf"; then
+              
+            local new_size_mb=$(du -m "$tmp_opt" | awk '{print $1}')
+            if [ "$new_size_mb" -lt "$size_mb" ]; then
+                mv -f "$tmp_opt" "$pdf"
+                echo "   ✅ Reducido a $new_size_mb MB"
+            else
+                rm -f "$tmp_opt"
+                echo "   ℹ️  No se pudo reducir más el tamaño."
+            fi
+        else
+            rm -f "$tmp_opt"
+            echo "   ❌ Falló la optimización para $filename"
+        fi
+    done < <(find -L "$ABS_DIR" -maxdepth 1 -type f \( -iname "*.pdf" -o -iname "*.PDF" \) -print0)
+}
+
+optimize_heavy_pdfs
+
+
+# =========================================================
 # MENÚ INTERACTIVO COMPATIBLE CON EMACS *SHELL*
 # =========================================================
 

@@ -258,14 +258,11 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
     done
     
     if [ "$ALL_EXIST" = true ]; then
-        echo ""
-        echo ">>> PROCESANDO PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] <<<"
-        echo "    [+] Todos los audios (en/es/de) ya existen. Saltando extracción y traducción."
-        continue
+        echo ">>> PAGINA [$PADDED_PAGE / $TOTAL_PAGES] - Ya existen todos los audios. Saltando."
+        exit 0
     fi
     
-    echo ""
-    echo ">>> PROCESANDO PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] <<<"
+    echo "[+] Iniciando PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] (en segundo plano)..."
     
     # 1. Extraer solo esta página
     pdftotext -f $page -l $page -layout "$PDF_PATH" "$WORKDIR/raw_page_${PADDED_PAGE}.txt"
@@ -311,10 +308,10 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
     
     # Si la página está vacía, saltar
     if [ ! -s "$WORKDIR/raw_page_${PADDED_PAGE}.txt" ]; then
-        echo "    [!] Página vacía, saltando..."
-        continue
+        echo "✔ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] vacía (saltada)."
+        exit 0
     fi
-
+ 
     # 3. Generar los idiomas seleccionados para esta página
     for LANG in "${LANGS[@]}"; do
         FINAL_TXT="$WORKDIR/text_${LANG}_${PADDED_PAGE}.txt"
@@ -326,7 +323,7 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
             echo "    [+] $LANG: Ya existe, saltando."
             continue
         fi
-
+ 
         # Traducción si aplica
         if [ "$LANG" == "$ORIGIN_LANG" ]; then
             cp "$WORKDIR/raw_page_${PADDED_PAGE}.txt" "$FINAL_TXT"
@@ -340,6 +337,7 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
         MODEL="${MODELS[$LANG]}"
         cat "$FINAL_TXT" | "$PIPER_EXE" --model "$MODEL" --output_file "$OUT_WAV" > /dev/null 2>&1
     done
+    echo "✔ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] procesada correctamente."
     ) &
 
     # Limit concurrent jobs

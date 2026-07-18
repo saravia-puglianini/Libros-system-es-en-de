@@ -224,7 +224,7 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
         exit 0
     fi
     
-    echo ">>> PROCESANDO PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] <<<"
+    echo "[+] Iniciando PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] (en segundo plano)..."
     pdftotext -f $page -l $page -layout "$PDF_PATH" "$WORKDIR/raw_page_${PADDED_PAGE}.txt"
     
     NEEDS_OCR=false
@@ -256,6 +256,7 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
     if [ -f "$MONOLITHS_DIR/limpiador.py" ]; then "$PY_BIN" "$MONOLITHS_DIR/limpiador.py" "$WORKDIR/raw_page_${PADDED_PAGE}.txt" > /dev/null 2>&1 || true; fi
     
     if [ ! -s "$WORKDIR/raw_page_${PADDED_PAGE}.txt" ]; then
+        echo "✔ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] vacía (saltada)."
         exit 0
     fi
     
@@ -267,7 +268,11 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
     fi
     
     MODEL="${MODELS[$TARGET_LANG]}"
-    cat "$FINAL_TXT" | "$PIPER_EXE" --model "$MODEL" --output_file "$OUT_WAV" > /dev/null 2>&1
+    if cat "$FINAL_TXT" | "$PIPER_EXE" --model "$MODEL" --output_file "$OUT_WAV" > /dev/null 2>&1; then
+        echo "✔ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] procesada correctamente."
+    else
+        echo "❌ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] error al generar audio."
+    fi
     ) &
     
     while [ $(jobs -rp | wc -l) -ge $MAX_JOBS ]; do
