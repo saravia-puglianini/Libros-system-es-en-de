@@ -194,6 +194,61 @@ for folder in os.listdir(project_root):
             sys.path.insert(0, site_pkg)
 
 from deep_translator import GoogleTranslator
+import time
+import subprocess
+
+def call_apertium(text, mode):
+    portable_dir = None
+    for folder in os.listdir(project_root):
+        if folder.startswith('portable-bin-'):
+            portable_dir = os.path.join(project_root, folder)
+            break
+            
+    env = os.environ.copy()
+    if portable_dir:
+        apertium_bin = os.path.join(portable_dir, "bin", "apertium")
+        lib_path = os.path.join(portable_dir, "lib")
+        lib64_path = os.path.join(portable_dir, "lib64")
+        datadir = os.path.join(portable_dir, "share", "apertium")
+        env["LD_LIBRARY_PATH"] = f"/usr/lib64:{lib64_path}:{lib_path}:{env.get('LD_LIBRARY_PATH', '')}"
+        env["APERTIUM_DATADIR"] = datadir
+        cmd = apertium_bin
+    else:
+        cmd = "apertium"
+        
+    try:
+        res = subprocess.run(
+            [cmd, mode],
+            input=text.encode('utf-8'),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env
+        )
+        if res.returncode == 0:
+            return res.stdout.decode('utf-8').strip()
+        else:
+            print(f"⚠️ Apertium error: {res.stderr.decode('utf-8')}", file=sys.stderr)
+    except Exception as e:
+        print(f"⚠️ Error running apertium: {e}", file=sys.stderr)
+    return text
+
+def translate_apertium(text, source_lang, target_lang):
+    lang_map = {'es': 'spa', 'en': 'eng', 'de': 'deu'}
+    src = lang_map.get(source_lang, source_lang)
+    tgt = lang_map.get(target_lang, target_lang)
+    
+    if src == tgt:
+        return text
+        
+    direct_modes = ['eng-spa', 'spa-eng', 'eng-deu', 'deu-eng']
+    mode = f"{src}-{tgt}"
+    if mode in direct_modes:
+        return call_apertium(text, mode)
+    else:
+        if src != 'eng' and tgt != 'eng':
+            intermediate = call_apertium(text, f"{src}-eng")
+            return call_apertium(intermediate, f"eng-{tgt}")
+    return text
 
 def chunk_text(text, size=4000):
     return [text[i:i+size] for i in range(0, len(text), size)]
@@ -205,15 +260,39 @@ try:
         with open("$output_file", 'w') as f: f.write("")
         sys.exit(0)
         
-    translator = GoogleTranslator(source='auto', target="$target_lang")
+    service = os.environ.get('TRANSLATOR_SERVICE', 'google').lower()
     chunks = chunk_text(text)
     translated_chunks = []
     
-    for chunk in chunks:
-        if chunk.strip():
-            translated_chunks.append(translator.translate(chunk))
-        else:
-            translated_chunks.append(chunk)
+    if service == 'apertium':
+        source_lang = "en"
+        for chunk in chunks:
+            if chunk.strip():
+                translated_chunks.append(translate_apertium(chunk, source_lang, "$target_lang"))
+            else:
+                translated_chunks.append(chunk)
+    else:
+        translator = GoogleTranslator(source='auto', target="$target_lang")
+        for chunk in chunks:
+            if chunk.strip():
+                translated_chunk = None
+                attempt = 1
+                while True:
+                    try:
+                        translated_chunk = translator.translate(chunk)
+                        if translated_chunk and "server error" not in translated_chunk.lower():
+                            break
+                        else:
+                            print(f"⚠️ Translation returned empty or 'server error' (attempt {attempt})", file=sys.stderr)
+                    except Exception as e:
+                        print(f"⚠️ Error translating chunk (attempt {attempt}): {e}", file=sys.stderr)
+                    print("⏳ Esperando 1 segundo para reintentar traducción...", file=sys.stderr)
+                    time.sleep(1)
+                    attempt += 1
+                
+                translated_chunks.append(translated_chunk)
+            else:
+                translated_chunks.append(chunk)
             
     with open("$output_file", 'w', encoding='utf-8') as f:
         f.write(" ".join(translated_chunks))
