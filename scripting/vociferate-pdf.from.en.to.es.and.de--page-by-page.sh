@@ -55,8 +55,8 @@ BASE_NAME=$(basename "$PDF_PATH")
 ORIGIN_LANG=$(echo "$BASE_NAME" | rev | cut -d. -f2 | rev)
 BOOK_NAME=$(echo "$BASE_NAME" | sed "s/\.${ORIGIN_LANG}\.pdf$//")
 
-if [[ ! "$ORIGIN_LANG" =~ ^(en|es|de)$ ]]; then
-    echo "Error: El archivo debe terminar en .en.pdf, .es.pdf o .de.pdf"
+if [[ ! "$ORIGIN_LANG" =~ ^[a-zA-Z]{2}$ ]]; then
+    echo "Error: El archivo debe terminar en .XX.pdf donde XX es el código de idioma de dos letras"
     exit 1
 fi
 
@@ -174,6 +174,39 @@ echo "[+] Idiomas seleccionados para vociferar: ${LANGS[*]}"
 
 
 # --- Función de traducción (reutilizada) ---
+# --- Selección de motor de traducción ---
+if [ -z "${TRANSLATOR_SERVICE:-}" ]; then
+    echo ""
+    echo "Seleccione el motor de traducción:"
+    echo "[0] google-translate (Internet required)"
+    echo "[1] apertium (No DRM, No internet optional)"
+    echo ""
+    trans_service_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
+            if [[ "$input_trans_service" == "1" ]]; then
+                trans_service_choice="1"
+                break
+            elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
+                trans_service_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        trans_service_choice="0"
+        echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+    fi
+
+    if [[ "$trans_service_choice" == "1" ]]; then
+        export TRANSLATOR_SERVICE="apertium"
+    else
+        export TRANSLATOR_SERVICE="google"
+    fi
+fi
+
 translate_text() {
     local target_lang=$1
     local input_file=$2
@@ -184,6 +217,7 @@ translate_text() {
     cat <<EOF > "$WORKDIR/translator_${PADDED_PAGE}_${target_lang}.py"
 import os
 import sys
+import re
 
 # Dynamically add portable python site-packages to sys.path
 project_root = "$PORTABLE_ROOT"
@@ -196,13 +230,18 @@ for folder in os.listdir(project_root):
 from deep_translator import GoogleTranslator
 import time
 import subprocess
+import shutil
 
 def call_apertium(text, mode):
+    selected_portable = os.environ.get('SELECTED_PORTABLE_DIR')
     portable_dir = None
-    for folder in os.listdir(project_root):
-        if folder.startswith('portable-bin-'):
-            portable_dir = os.path.join(project_root, folder)
-            break
+    if selected_portable and os.path.exists(os.path.join(project_root, selected_portable)):
+        portable_dir = os.path.join(project_root, selected_portable)
+    else:
+        for folder in os.listdir(project_root):
+            if folder.startswith('portable-bin-'):
+                portable_dir = os.path.join(project_root, folder)
+                break
             
     env = os.environ.copy()
     if portable_dir:
@@ -212,7 +251,13 @@ def call_apertium(text, mode):
         datadir = os.path.join(portable_dir, "share", "apertium")
         env["LD_LIBRARY_PATH"] = f"/usr/lib64:{lib64_path}:{lib_path}:{env.get('LD_LIBRARY_PATH', '')}"
         env["APERTIUM_DATADIR"] = datadir
-        cmd = apertium_bin
+        # Si apertium está instalado en el sistema anfitrión se usa el binario nativo con los diccionarios portables
+        if shutil.which("apertium"):
+            cmd = "apertium"
+        elif os.path.exists(apertium_bin):
+            cmd = apertium_bin
+        else:
+            cmd = "apertium"
     else:
         cmd = "apertium"
         
@@ -225,7 +270,8 @@ def call_apertium(text, mode):
             env=env
         )
         if res.returncode == 0:
-            return res.stdout.decode('utf-8').strip()
+            raw_out = res.stdout.decode('utf-8').strip()
+            return re.sub(r'[*@#~]', '', raw_out)
         else:
             print(f"⚠️ Apertium error: {res.stderr.decode('utf-8')}", file=sys.stderr)
     except Exception as e:
@@ -364,6 +410,12 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
             en) TESS_LANG="eng" ;;
             es) TESS_LANG="spa" ;;
             de) TESS_LANG="deu" ;;
+            ru) TESS_LANG="rus" ;;
+            jp) TESS_LANG="jpn" ;;
+            fr) TESS_LANG="fra" ;;
+            it) TESS_LANG="ita" ;;
+            pt) TESS_LANG="por" ;;
+            zh) TESS_LANG="chi_sim" ;;
             *)  TESS_LANG="eng" ;;
         esac
         

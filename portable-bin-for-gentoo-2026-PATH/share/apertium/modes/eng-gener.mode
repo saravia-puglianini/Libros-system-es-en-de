@@ -1,1 +1,1 @@
-lt-proc -g '/home/user/Libros-system-es-en-de/portable-bin-PATH/share/apertium/apertium-eng/eng.autogen.bin' | lt-proc -p '/home/user/Libros-system-es-en-de/portable-bin-PATH/share/apertium/apertium-eng/eng.autopgen.bin'
+lt-proc -g '/home/user/Libros-system-es-en-de/portable-bin-for-gentoo-2026-PATH/share/apertium/apertium-eng/eng.autogen.bin' | lt-proc -p '/home/user/Libros-system-es-en-de/portable-bin-for-gentoo-2026-PATH/share/apertium/apertium-eng/eng.autopgen.bin'

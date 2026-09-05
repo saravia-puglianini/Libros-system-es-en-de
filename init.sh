@@ -453,6 +453,36 @@ if [[ "$mode_selection" == "1" ]]; then
         echo "[Auto] Seleccionado libro 0 (primer libro) debido a entrada no interactiva"
     fi
     
+    echo ""
+    echo "Seleccione el motor de traducción:"
+    echo "[0] google-translate (Internet required)"
+    echo "[1] apertium (No DRM, No internet optional)"
+    echo ""
+    trans_service_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
+            if [[ "$input_trans_service" == "1" ]]; then
+                trans_service_choice="1"
+                break
+            elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
+                trans_service_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        trans_service_choice="0"
+        echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+    fi
+    
+    if [[ "$trans_service_choice" == "1" ]]; then
+        export TRANSLATOR_SERVICE="apertium"
+    else
+        export TRANSLATOR_SERVICE="google"
+    fi
+    
     selected_pdf="${unconverted_pdfs[$selected_index]}"
     selected_filename="${unconverted_names[$selected_index]}"
     
@@ -497,6 +527,7 @@ if [[ "$mode_selection" == "1" ]]; then
     
     echo ""
     echo "🎉 ¡Conversión ardua completada con éxito!"
+    unset TRANSLATOR_SERVICE
     echo "Continuando con el procesamiento general de la biblioteca..."
     echo ""
 fi
@@ -586,6 +617,36 @@ if [[ "$mode_selection" == "2" ]]; then
     echo "===================================================="
     
     # Exportar variables de entorno para que los scripts hijos las lean y bypassen prompts
+    echo ""
+    echo "Seleccione el motor de traducción:"
+    echo "[0] google-translate (Internet required)"
+    echo "[1] apertium (No DRM, No internet optional)"
+    echo ""
+    trans_service_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
+            if [[ "$input_trans_service" == "1" ]]; then
+                trans_service_choice="1"
+                break
+            elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
+                trans_service_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        trans_service_choice="0"
+        echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+    fi
+    
+    if [[ "$trans_service_choice" == "1" ]]; then
+        export TRANSLATOR_SERVICE="apertium"
+    else
+        export TRANSLATOR_SERVICE="google"
+    fi
+    
     export OVERRIDE_RANGE="$pages_input"
     export OVERRIDE_LANG="$langs_input"
     
@@ -625,6 +686,7 @@ if [[ "$mode_selection" == "2" ]]; then
     # Limpiar variables de entorno
     unset OVERRIDE_RANGE
     unset OVERRIDE_LANG
+    unset TRANSLATOR_SERVICE
     
     echo ""
     echo "===================================================="
@@ -726,7 +788,38 @@ if [[ "$mode_selection" == "3" ]]; then
         echo "[Auto] Seleccionado idioma original (0) debido a entrada no interactiva"
     fi
     
+    echo ""
+    echo "Seleccione el motor de traducción:"
+    echo "[0] google-translate (Internet required)"
+    echo "[1] apertium (No DRM, No internet optional)"
+    echo ""
+    trans_service_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
+            if [[ "$input_trans_service" == "1" ]]; then
+                trans_service_choice="1"
+                break
+            elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
+                trans_service_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        trans_service_choice="0"
+        echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+    fi
+    
+    if [[ "$trans_service_choice" == "1" ]]; then
+        export TRANSLATOR_SERVICE="apertium"
+    else
+        export TRANSLATOR_SERVICE="google"
+    fi
+    
     bash ./scripting/vociferate-pdf.single-lang--page-by-page.sh "$selected_pdf" "$lang_choice"
+    unset TRANSLATOR_SERVICE
     
     echo ""
     echo "🎉 ¡Conversión ardua completada con éxito!"
@@ -814,6 +907,36 @@ if [[ "$mode_selection" == "4" ]]; then
         exit 1
     fi
     
+    echo ""
+    echo "Seleccione el motor de traducción:"
+    echo "[0] google-translate (Internet required)"
+    echo "[1] apertium (No DRM, No internet optional)"
+    echo ""
+    trans_service_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
+            if [[ "$input_trans_service" == "1" ]]; then
+                trans_service_choice="1"
+                break
+            elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
+                trans_service_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        trans_service_choice="0"
+        echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+    fi
+    
+    if [[ "$trans_service_choice" == "1" ]]; then
+        export TRANSLATOR_SERVICE="apertium"
+    else
+        export TRANSLATOR_SERVICE="google"
+    fi
+    
     export OVERRIDE_RANGE="$pages_input"
     export OVERRIDE_LANG_OPT="$lang_choice"
     
@@ -830,6 +953,7 @@ if [[ "$mode_selection" == "4" ]]; then
     
     unset OVERRIDE_RANGE
     unset OVERRIDE_LANG_OPT
+    unset TRANSLATOR_SERVICE
     
     echo ""
     echo "===================================================="

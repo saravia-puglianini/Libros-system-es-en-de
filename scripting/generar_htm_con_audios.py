@@ -23,7 +23,7 @@ PROJECT_ROOT = os.environ.get('PORTABLE_ROOT', os.path.dirname(SCRIPT_DIR) if os
 def get_book_name(pdf_path):
     base_name = os.path.basename(pdf_path)
     # Patrón: nombre_libro.<idioma>.pdf (ej: alices_abenteuer.en.pdf)
-    match = re.search(r'\.(en|es|de)\.pdf$', base_name, re.IGNORECASE)
+    match = re.search(r'\.([a-zA-Z]{2})\.pdf$', base_name, re.IGNORECASE)
     if match:
         return base_name[:match.start()]
     else:
@@ -238,10 +238,11 @@ def generate_htm(template_content, pdf_base64, audio_map, filename, output_path)
         const audioMap = {json.dumps(audio_map, indent=12)};
         let activeAudio = null;
         let activeLang = null;
-        const pageTurnSoundSrc = "{page_turn_sound_base64}";
-        let pageTurnAudio = null;
-        if (pageTurnSoundSrc) {{
-            pageTurnAudio = new Audio(pageTurnSoundSrc);
+        if (typeof pageTurnAudio === 'undefined' || !pageTurnAudio) {{
+            const pageTurnSoundSrc = "{page_turn_sound_base64}";
+            if (pageTurnSoundSrc) {{
+                pageTurnAudio = new Audio(pageTurnSoundSrc);
+            }}
         }}
 
         // Get requested lang from URL

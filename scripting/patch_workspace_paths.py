@@ -23,21 +23,21 @@ def get_old_project_dir(p_dir):
         except Exception:
             pass
             
-    # Try alternative modes files if apertium.pc doesn't exist
-    modes_dir = os.path.join(p_dir, 'portable-bin-for-gentoo-2026-PATH', 'share', 'apertium', 'modes')
-    if os.path.exists(modes_dir):
-        for file in os.listdir(modes_dir):
-            if file.endswith('.mode'):
-                filepath = os.path.join(modes_dir, file)
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        # Find path of type /home/user/.../portable-bin-PATH
-                        match = re.search(r"'/home/user/([^']+)/portable-bin-PATH", content)
-                        if match:
-                            return f"/home/user/{match.group(1)}"
-                except Exception:
-                    pass
+    # Try alternative modes files from any portable-bin directory
+    for folder in ['portable-bin-for-gentoo-2026-PATH', 'portable-bin-for-rocky-linux-8-PATH']:
+        modes_dir = os.path.join(p_dir, folder, 'share', 'apertium', 'modes')
+        if os.path.exists(modes_dir):
+            for file in os.listdir(modes_dir):
+                if file.endswith('.mode'):
+                    filepath = os.path.join(modes_dir, file)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            c = f.read()
+                            match = re.search(r"'(/home/user/[^']+?)/portable-bin-", c)
+                            if match:
+                                return match.group(1)
+                    except Exception:
+                        pass
     return None
 
 old_project_dir = get_old_project_dir(project_dir)
