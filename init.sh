@@ -318,6 +318,29 @@ optimize_heavy_pdfs() {
 
 optimize_heavy_pdfs
 
+# =========================================================
+# MENÚ DE CACHÉ DE PROCESAMIENTO
+# =========================================================
+
+echo ""
+echo "Elija una opción de procesamiento:"
+echo "[0] reutilizar cache"
+echo "[1] renovar cache"
+echo ""
+
+cache_selection="0"
+read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_cache || true
+if [[ "$input_cache" == "1" ]]; then
+    cache_selection="1"
+fi
+
+if [[ "$cache_selection" == "1" ]]; then
+    echo "🔄 Renovando caché: se re-procesarán y regenerarán archivos."
+    export FORCE_RENEW_CACHE="1"
+else
+    echo "⚡ Reutilizando caché: se conservarán archivos previamente generados."
+    export FORCE_RENEW_CACHE="0"
+fi
 
 # =========================================================
 # MENÚ INTERACTIVO COMPATIBLE CON EMACS *SHELL*
@@ -377,7 +400,7 @@ if [[ "$mode_selection" == "1" ]]; then
         fi
         
         htm_audio_file="$HTM_AUDIO_DIR/${clean_book_name}.htm"
-        if [[ ! -f "$htm_audio_file" ]]; then
+        if [[ "${FORCE_RENEW_CACHE:-0}" == "1" || ! -f "$htm_audio_file" ]]; then
             # Obtener número de páginas
             pages=$(get_page_count "$pdf")
             pages=${pages:-0}
@@ -454,9 +477,9 @@ if [[ "$mode_selection" == "1" ]]; then
     fi
     
     echo ""
-    echo "Seleccione el motor de traducción:"
+    echo "Seleccione si desea usar un servicio de google ...o un comando sin salir a internet para traducir:"
     echo "[0] google-translate (Internet required)"
-    echo "[1] apertium (No DRM, No internet optional)"
+    echo "[1] apertium (No DRM... No internet? no problem, internet is optional)"
     echo ""
     trans_service_choice="0"
     if [ -t 0 ]; then
@@ -481,6 +504,39 @@ if [[ "$mode_selection" == "1" ]]; then
         export TRANSLATOR_SERVICE="apertium"
     else
         export TRANSLATOR_SERVICE="google"
+    fi
+    
+    echo ""
+    echo "Elija una optimización:"
+    echo ""
+    echo "[0] Comprimir brutalmente, pero compresiblemente audible"
+    echo "[1] No comprimir, tengo oido de músico, tengo discos grandes"
+    echo ""
+    opt_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_opt || true
+            if [[ "$input_opt" == "1" ]]; then
+                opt_choice="1"
+                break
+            elif [[ "$input_opt" == "0" || -z "$input_opt" ]]; then
+                opt_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        opt_choice="0"
+        echo "[Auto] Seleccionado Comprimir brutalmente (0) debido a entrada no interactiva"
+    fi
+    
+    if [[ "$opt_choice" == "0" ]]; then
+        echo ""
+        echo "De acuerdo se comprimirá brutalmente entonces ahorrará 75% de MB"
+        export AUDIO_OPTIMIZE="1"
+    else
+        export AUDIO_OPTIMIZE="0"
     fi
     
     selected_pdf="${unconverted_pdfs[$selected_index]}"
@@ -528,6 +584,7 @@ if [[ "$mode_selection" == "1" ]]; then
     echo ""
     echo "🎉 ¡Conversión ardua completada con éxito!"
     unset TRANSLATOR_SERVICE
+    unset AUDIO_OPTIMIZE
     echo "Continuando con el procesamiento general de la biblioteca..."
     echo ""
 fi
@@ -618,9 +675,9 @@ if [[ "$mode_selection" == "2" ]]; then
     
     # Exportar variables de entorno para que los scripts hijos las lean y bypassen prompts
     echo ""
-    echo "Seleccione el motor de traducción:"
+    echo "Seleccione si desea usar un servicio de google ...o un comando sin salir a internet para traducir:"
     echo "[0] google-translate (Internet required)"
-    echo "[1] apertium (No DRM, No internet optional)"
+    echo "[1] apertium (No DRM... No internet? no problem, internet is optional)"
     echo ""
     trans_service_choice="0"
     if [ -t 0 ]; then
@@ -645,6 +702,39 @@ if [[ "$mode_selection" == "2" ]]; then
         export TRANSLATOR_SERVICE="apertium"
     else
         export TRANSLATOR_SERVICE="google"
+    fi
+    
+    echo ""
+    echo "Elija una optimización:"
+    echo ""
+    echo "[0] Comprimir brutalmente, pero compresiblemente audible"
+    echo "[1] No comprimir, tengo oido de músico, tengo discos grandes"
+    echo ""
+    opt_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_opt || true
+            if [[ "$input_opt" == "1" ]]; then
+                opt_choice="1"
+                break
+            elif [[ "$input_opt" == "0" || -z "$input_opt" ]]; then
+                opt_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        opt_choice="0"
+        echo "[Auto] Seleccionado Comprimir brutalmente (0) debido a entrada no interactiva"
+    fi
+    
+    if [[ "$opt_choice" == "0" ]]; then
+        echo ""
+        echo "De acuerdo se comprimirá brutalmente entonces ahorrará 75% de MB"
+        export AUDIO_OPTIMIZE="1"
+    else
+        export AUDIO_OPTIMIZE="0"
     fi
     
     export OVERRIDE_RANGE="$pages_input"
@@ -761,6 +851,16 @@ if [[ "$mode_selection" == "3" ]]; then
     selected_pdf="${all_pdfs[$selected_index]}"
     selected_filename="${all_names[$selected_index]}"
     
+    # Determinar idioma de origen
+    orig_lang="en"
+    if [[ "$selected_filename" =~ \.es\.pdf$ ]]; then
+        orig_lang="es"
+    elif [[ "$selected_filename" =~ \.en\.pdf$ ]]; then
+        orig_lang="en"
+    elif [[ "$selected_filename" =~ \.de\.pdf$ ]]; then
+        orig_lang="de"
+    fi
+    
     echo ""
     echo "Seleccione el idioma de destino para vociferar:"
     echo "[0] vociferar en el idioma original"
@@ -788,38 +888,83 @@ if [[ "$mode_selection" == "3" ]]; then
         echo "[Auto] Seleccionado idioma original (0) debido a entrada no interactiva"
     fi
     
+    target_lang="$orig_lang"
+    case "$lang_choice" in
+        0) target_lang="$orig_lang" ;;
+        1) target_lang="es" ;;
+        2) target_lang="en" ;;
+        3) target_lang="de" ;;
+        *) target_lang="$orig_lang" ;;
+    esac
+    
+    if [ "$target_lang" != "$orig_lang" ]; then
+        echo ""
+        echo "Seleccione si desea usar un servicio de google ...o un comando sin salir a internet para traducir:"
+        echo "[0] google-translate (Internet required)"
+        echo "[1] apertium (No DRM... No internet? no problem, internet is optional)"
+        echo ""
+        trans_service_choice="0"
+        if [ -t 0 ]; then
+            while true; do
+                read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
+                if [[ "$input_trans_service" == "1" ]]; then
+                    trans_service_choice="1"
+                    break
+                elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
+                    trans_service_choice="0"
+                    break
+                else
+                    echo "❌ Opción inválida. Intente de nuevo."
+                fi
+            done
+        else
+            trans_service_choice="0"
+            echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+        fi
+        
+        if [[ "$trans_service_choice" == "1" ]]; then
+            export TRANSLATOR_SERVICE="apertium"
+        else
+            export TRANSLATOR_SERVICE="google"
+        fi
+    fi
+    
     echo ""
-    echo "Seleccione el motor de traducción:"
-    echo "[0] google-translate (Internet required)"
-    echo "[1] apertium (No DRM, No internet optional)"
+    echo "Elija una optimización:"
     echo ""
-    trans_service_choice="0"
+    echo "[0] Comprimir brutalmente, pero compresiblemente audible"
+    echo "[1] No comprimir, tengo oido de músico, tengo discos grandes"
+    echo ""
+    opt_choice="0"
     if [ -t 0 ]; then
         while true; do
-            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
-            if [[ "$input_trans_service" == "1" ]]; then
-                trans_service_choice="1"
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_opt || true
+            if [[ "$input_opt" == "1" ]]; then
+                opt_choice="1"
                 break
-            elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
-                trans_service_choice="0"
+            elif [[ "$input_opt" == "0" || -z "$input_opt" ]]; then
+                opt_choice="0"
                 break
             else
                 echo "❌ Opción inválida. Intente de nuevo."
             fi
         done
     else
-        trans_service_choice="0"
-        echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+        opt_choice="0"
+        echo "[Auto] Seleccionado Comprimir brutalmente (0) debido a entrada no interactiva"
     fi
     
-    if [[ "$trans_service_choice" == "1" ]]; then
-        export TRANSLATOR_SERVICE="apertium"
+    if [[ "$opt_choice" == "0" ]]; then
+        echo ""
+        echo "De acuerdo se comprimirá brutalmente entonces ahorrará 75% de MB"
+        export AUDIO_OPTIMIZE="1"
     else
-        export TRANSLATOR_SERVICE="google"
+        export AUDIO_OPTIMIZE="0"
     fi
     
     bash ./scripting/vociferate-pdf.single-lang--page-by-page.sh "$selected_pdf" "$lang_choice"
     unset TRANSLATOR_SERVICE
+    unset AUDIO_OPTIMIZE
     
     echo ""
     echo "🎉 ¡Conversión ardua completada con éxito!"
@@ -907,34 +1052,69 @@ if [[ "$mode_selection" == "4" ]]; then
         exit 1
     fi
     
+    if [[ "$lang_choice" != "0" ]]; then
+        echo ""
+        echo "Seleccione si desea usar un servicio de google ...o un comando sin salir a internet para traducir:"
+        echo "[0] google-translate (Internet required)"
+        echo "[1] apertium (No DRM... No internet? no problem, internet is optional)"
+        echo ""
+        trans_service_choice="0"
+        if [ -t 0 ]; then
+            while true; do
+                read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
+                if [[ "$input_trans_service" == "1" ]]; then
+                    trans_service_choice="1"
+                    break
+                elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
+                    trans_service_choice="0"
+                    break
+                else
+                    echo "❌ Opción inválida. Intente de nuevo."
+                fi
+            done
+        else
+            trans_service_choice="0"
+            echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+        fi
+        
+        if [[ "$trans_service_choice" == "1" ]]; then
+            export TRANSLATOR_SERVICE="apertium"
+        else
+            export TRANSLATOR_SERVICE="google"
+        fi
+    fi
+    
     echo ""
-    echo "Seleccione el motor de traducción:"
-    echo "[0] google-translate (Internet required)"
-    echo "[1] apertium (No DRM, No internet optional)"
+    echo "Elija una optimización:"
     echo ""
-    trans_service_choice="0"
+    echo "[0] Comprimir brutalmente, pero compresiblemente audible"
+    echo "[1] No comprimir, tengo oido de músico, tengo discos grandes"
+    echo ""
+    opt_choice="0"
     if [ -t 0 ]; then
         while true; do
-            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_trans_service || true
-            if [[ "$input_trans_service" == "1" ]]; then
-                trans_service_choice="1"
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_opt || true
+            if [[ "$input_opt" == "1" ]]; then
+                opt_choice="1"
                 break
-            elif [[ "$input_trans_service" == "0" || -z "$input_trans_service" ]]; then
-                trans_service_choice="0"
+            elif [[ "$input_opt" == "0" || -z "$input_opt" ]]; then
+                opt_choice="0"
                 break
             else
                 echo "❌ Opción inválida. Intente de nuevo."
             fi
         done
     else
-        trans_service_choice="0"
-        echo "[Auto] Seleccionado google-translate (0) debido a entrada no interactiva"
+        opt_choice="0"
+        echo "[Auto] Seleccionado Comprimir brutalmente (0) debido a entrada no interactiva"
     fi
     
-    if [[ "$trans_service_choice" == "1" ]]; then
-        export TRANSLATOR_SERVICE="apertium"
+    if [[ "$opt_choice" == "0" ]]; then
+        echo ""
+        echo "De acuerdo se comprimirá brutalmente entonces ahorrará 75% de MB"
+        export AUDIO_OPTIMIZE="1"
     else
-        export TRANSLATOR_SERVICE="google"
+        export AUDIO_OPTIMIZE="0"
     fi
     
     export OVERRIDE_RANGE="$pages_input"
@@ -954,6 +1134,7 @@ if [[ "$mode_selection" == "4" ]]; then
     unset OVERRIDE_RANGE
     unset OVERRIDE_LANG_OPT
     unset TRANSLATOR_SERVICE
+    unset AUDIO_OPTIMIZE
     
     echo ""
     echo "===================================================="
@@ -991,86 +1172,91 @@ echo "✅ Duplicados eliminados"
 # PROCESAR PDFs
 # =========================================================
 
-echo
-echo "📚 Procesando PDFs..."
+if [[ "${FORCE_RENEW_CACHE:-0}" == "1" ]]; then
+    echo
+    echo "📚 Procesando PDFs (Sanitizando y renovando metadata)..."
 
-find -L "$ABS_DIR" -maxdepth 1 -type f \( -iname "*.pdf" -o -iname "*.PDF" \) -print0 |
-while IFS= read -r -d '' file; do
+    find -L "$ABS_DIR" -maxdepth 1 -type f \( -iname "*.pdf" -o -iname "*.PDF" \) -print0 |
+    while IFS= read -r -d '' file; do
+
+        echo
+        echo "========================================"
+        echo "[+] Archivo:"
+        echo "    $file"
+
+        base=$(basename "$file")
+
+        # =====================================================
+        # VALIDAR MIME REAL
+        # =====================================================
+
+        mime=$(file --mime-type -b "$file")
+
+        if [[ "$mime" != "application/pdf" ]]; then
+            echo "[!] No es un PDF válido"
+            continue
+        fi
+
+        # =====================================================
+        # SANITIZAR SIEMPRE (Ignorar si ya está linearizado)
+        # =====================================================
+
+        echo "[*] Forzando sanitización para eliminar posibles scripts/metadata..."
+
+        # =====================================================
+        # LIMPIAR METADATA
+        # =====================================================
+
+        if exiftool \
+            -overwrite_original \
+            -all= \
+            "$file" >/dev/null 2>&1; then
+
+            echo "[+] Metadata eliminada"
+
+        else
+            echo "[!] Error eliminando metadata"
+            continue
+        fi
+
+        # =====================================================
+        # SANITIZAR PDF
+        # =====================================================
+
+        # QPDF < 10.0.0 no soporta --replace-input, usamos un archivo temporal
+        tmp_qpdf=$(mktemp)
+        if qpdf \
+            --linearize \
+            --object-streams=generate \
+            "$file" \
+            "$tmp_qpdf" >/dev/null 2>&1; then
+
+            mv -f "$tmp_qpdf" "$file"
+            echo "[+] PDF sanitizado"
+
+        else
+            rm -f "$tmp_qpdf"
+            echo "[!] QPDF falló"
+            continue
+        fi
+
+        # =====================================================
+        # CONSERVAR NOMBRE ORIGINAL
+        # =====================================================
+
+        echo "[+] Nombre preservado:"
+        echo "    $base"
+
+    done
 
     echo
     echo "========================================"
-    echo "[+] Archivo:"
-    echo "    $file"
-
-    base=$(basename "$file")
-
-    # =====================================================
-    # VALIDAR MIME REAL
-    # =====================================================
-
-    mime=$(file --mime-type -b "$file")
-
-    if [[ "$mime" != "application/pdf" ]]; then
-        echo "[!] No es un PDF válido"
-        continue
-    fi
-
-    # =====================================================
-    # SANITIZAR SIEMPRE (Ignorar si ya está linearizado)
-    # =====================================================
-
-    echo "[*] Forzando sanitización para eliminar posibles scripts/metadata..."
-
-    # =====================================================
-    # LIMPIAR METADATA
-    # =====================================================
-
-    if exiftool \
-        -overwrite_original \
-        -all= \
-        "$file" >/dev/null 2>&1; then
-
-        echo "[+] Metadata eliminada"
-
-    else
-        echo "[!] Error eliminando metadata"
-        continue
-    fi
-
-    # =====================================================
-    # SANITIZAR PDF
-    # =====================================================
-
-    # QPDF < 10.0.0 no soporta --replace-input, usamos un archivo temporal
-    tmp_qpdf=$(mktemp)
-    if qpdf \
-        --linearize \
-        --object-streams=generate \
-        "$file" \
-        "$tmp_qpdf" >/dev/null 2>&1; then
-
-        mv -f "$tmp_qpdf" "$file"
-        echo "[+] PDF sanitizado"
-
-    else
-        rm -f "$tmp_qpdf"
-        echo "[!] QPDF falló"
-        continue
-    fi
-
-    # =====================================================
-    # CONSERVAR NOMBRE ORIGINAL
-    # =====================================================
-
-    echo "[+] Nombre preservado:"
-    echo "    $base"
-
-done
-
-echo
-echo "========================================"
-echo "✅ PDFs procesados"
-echo "========================================"
+    echo "✅ PDFs procesados"
+    echo "========================================"
+else
+    echo
+    echo "⚡ Reutilizando caché: Omitiendo sanitización pesada de PDFs existentes."
+fi
 
 # =========================================================
 # GENERAR MINIATURAS
@@ -1129,7 +1315,7 @@ for entry in "${PDF_DATA[@]}"; do
         "$TOTAL" \
         "$filename"
 
-    if [[ ! -f "$thumb_path" || "$pdf" -nt "$thumb_path" ]]; then
+    if [[ "${FORCE_RENEW_CACHE:-0}" == "1" || ! -f "$thumb_path" ]]; then
 
         if ! pdftoppm \
             -jpeg \
@@ -1469,13 +1655,13 @@ for entry in "${PDF_DATA[@]}"; do
         for part_pdf in "${trimmed_pdfs[@]}"; do
             part_filename=$(basename "$part_pdf")
             part_htm_normal="$HTM_DIR/${part_filename%.pdf}.htm"
-            if [[ ! -f "$part_htm_normal" || "$part_pdf" -nt "$part_htm_normal" ]]; then
+            if [[ "${FORCE_RENEW_CACHE:-0}" == "1" || ! -f "$part_htm_normal" ]]; then
                 "$PY_BIN" scripting/generar_htm.py "$part_pdf" "$part_htm_normal" "lib/pdf.js" "lib/pdf.worker.js"
             fi
         done
     else
-        # Generar siempre el visor htm normal si no existe o es antiguo
-        if [[ ! -f "$htm_normal" || "$pdf" -nt "$htm_normal" ]]; then
+        # Generar visor htm normal si no existe o si se renueva caché
+        if [[ "${FORCE_RENEW_CACHE:-0}" == "1" || ! -f "$htm_normal" ]]; then
             "$PY_BIN" scripting/generar_htm.py "$pdf" "$htm_normal" "lib/pdf.js" "lib/pdf.worker.js"
         fi
     fi

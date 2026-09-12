@@ -177,9 +177,9 @@ echo "[+] Idiomas seleccionados para vociferar: ${LANGS[*]}"
 # --- Selección de motor de traducción ---
 if [ -z "${TRANSLATOR_SERVICE:-}" ]; then
     echo ""
-    echo "Seleccione el motor de traducción:"
+    echo "Seleccione si desea usar un servicio de google ...o un comando sin salir a internet para traducir:"
     echo "[0] google-translate (Internet required)"
-    echo "[1] apertium (No DRM, No internet optional)"
+    echo "[1] apertium (No DRM... No internet? no problem, internet is optional)"
     echo ""
     trans_service_choice="0"
     if [ -t 0 ]; then
@@ -204,6 +204,75 @@ if [ -z "${TRANSLATOR_SERVICE:-}" ]; then
         export TRANSLATOR_SERVICE="apertium"
     else
         export TRANSLATOR_SERVICE="google"
+    fi
+fi
+
+# --- Selección de optimización de audio ---
+if [ -z "${AUDIO_OPTIMIZE:-}" ]; then
+    echo ""
+    echo "Elija una optimización:"
+    echo ""
+    echo "[0] Comprimir brutalmente, pero compresiblemente audible"
+    echo "[1] No comprimir, tengo oido de músico, tengo discos grandes"
+    echo ""
+    opt_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_opt || true
+            if [[ "$input_opt" == "1" ]]; then
+                opt_choice="1"
+                break
+            elif [[ "$input_opt" == "0" || -z "$input_opt" ]]; then
+                opt_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        opt_choice="0"
+        echo "[Auto] Seleccionado Comprimir brutalmente (0) debido a entrada no interactiva"
+    fi
+
+    if [[ "$opt_choice" == "0" ]]; then
+        echo ""
+        echo "De acuerdo se comprimirá brutalmente entonces ahorrará 75% de MB"
+        export AUDIO_OPTIMIZE="1"
+    else
+        export AUDIO_OPTIMIZE="0"
+    fi
+fi
+
+# --- Selección de formato del resultado / WhatsApp ---
+if [ -z "${WHATSAPP_SPLIT:-}" ]; then
+    echo ""
+    echo "Elija una opción para el resultado:"
+    echo ""
+    echo "[0] Compartible por whatsapp"
+    echo "[1] Para mi mismo en un solo archivo es suficiente"
+    echo ""
+    wa_choice="1"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_wa || true
+            if [[ "$input_wa" == "0" || -z "$input_wa" ]]; then
+                wa_choice="0"
+                break
+            elif [[ "$input_wa" == "1" ]]; then
+                wa_choice="1"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        wa_choice="0"
+    fi
+
+    if [[ "$wa_choice" == "0" ]]; then
+        export WHATSAPP_SPLIT="1"
+    else
+        export WHATSAPP_SPLIT="0"
     fi
 fi
 
@@ -269,6 +338,7 @@ def call_apertium(text, mode):
         )
         if res.returncode == 0:
             raw_out = res.stdout.decode('utf-8').strip()
+            # Eliminar marcadores sintácticos de Apertium (*, @, #, ~) para que el lector TTS no los pronuncie
             return re.sub(r'[*@#~]', '', raw_out)
         else:
             print(f"⚠️ Apertium error: {res.stderr.decode('utf-8')}", file=sys.stderr)
@@ -309,7 +379,7 @@ try:
     translated_chunks = []
     
     if service == 'apertium':
-        source_lang = "de"
+        source_lang = "$ORIGIN_LANG"
         for chunk in chunks:
             if chunk.strip():
                 translated_chunks.append(translate_apertium(chunk, source_lang, "$target_lang"))
@@ -341,7 +411,7 @@ try:
     with open("$output_file", 'w', encoding='utf-8') as f:
         f.write(" ".join(translated_chunks))
 except Exception as e:
-    print(f"⚠️ Alerta: Error en traducción a $target_lang ({e}). Usando texto original como fallback.", file=sys.stderr)
+    print(f"⚠️ Error en traducción a $target_lang ({e}). Usando original.", file=sys.stderr)
     try:
         if 'text' not in locals():
             with open("$input_file", 'r', encoding='utf-8') as f_in:
@@ -350,30 +420,38 @@ except Exception as e:
             f_out.write(text)
         sys.exit(0)
     except Exception as fallback_err:
-        print(f"Error crítico en fallback: {fallback_err}", file=sys.stderr)
         sys.exit(1)
 EOF
 
     "$PY_BIN" "$WORKDIR/translator_${PADDED_PAGE}_${target_lang}.py" 
 }
 
-# --- Bucle por Página ---
 TOTAL_THREADS=$(nproc)
-MAX_JOBS=$((TOTAL_THREADS / 2))
-if [ "$MAX_JOBS" -lt 1 ]; then
+if [ -n "${PARALLEL_JOBS:-}" ]; then
+    MAX_JOBS="$PARALLEL_JOBS"
+elif [ "$TOTAL_THREADS" -gt 4 ]; then
+    MAX_JOBS=$(( TOTAL_THREADS - 2 ))
+elif [ "$TOTAL_THREADS" -gt 1 ]; then
+    MAX_JOBS=$(( TOTAL_THREADS - 1 ))
+else
     MAX_JOBS=1
 fi
-echo "[+] Detectados $TOTAL_THREADS hilos. Procesando con $MAX_JOBS procesos en paralelo (mitad lógica)."
+
+echo "🚀 CPU detectada: $TOTAL_THREADS hilos. Ejecutando $MAX_JOBS procesos en paralelo simultáneamente..."
 
 for (( page=START_PAGE; page<=END_PAGE; page++ )); do
     (
 
     PADDED_PAGE=$(printf "%04d" $page)
     
-    # 0. Comprobar si ya existen todos los audios para esta página
+    # 1. Comprobar si ya existen todos los audios de los idiomas solicitados para esta página
     ALL_EXIST=true
     for L in "${LANGS[@]}"; do
-        W="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.${L}.wav"
+        if [ "${AUDIO_OPTIMIZE:-0}" == "1" ]; then
+            W="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.optime.${L}.wav"
+        else
+            W="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.${L}.wav"
+        fi
         M="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.${L}.mp3"
         # Si NO existe un archivo WAV no vacío Y tampoco existe un archivo MP3 no vacío, entonces falta el audio para este idioma.
         if [ ! -s "$W" ] && [ ! -s "$M" ]; then
@@ -382,8 +460,8 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
         fi
     done
     
-    if [ "$ALL_EXIST" = true ]; then
-        echo ">>> PAGINA [$PADDED_PAGE / $TOTAL_PAGES] - Ya existen todos los audios. Saltando."
+    if [ "$ALL_EXIST" = true ] && [ "${FORCE_RENEW_CACHE:-0}" != "1" ]; then
+        echo ">>> PAGINA [$PADDED_PAGE / $TOTAL_PAGES] - Ya existen todos los audios (${LANGS[*]}). Saltando extracción."
         exit 0
     fi
     
@@ -403,18 +481,18 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
     fi
     
     if [ "$NEEDS_OCR" = true ]; then
+        echo "    [*] OCR activado para página $PADDED_PAGE (texto vacío o corrupto detectado)..."
         # Determinar idioma para Tesseract y comprobar disponibilidad
         case "$ORIGIN_LANG" in
             en) TESS_LANG="eng" ;;
             es) TESS_LANG="spa" ;;
             de) TESS_LANG="deu" ;;
-            *)  TESS_LANG="eng" ;;
+            *)  TESS_LANG="deu" ;;
         esac
         
-        # Verificar si Tesseract tiene el idioma instalado, si no, fallback a eng
+        # Verificar si Tesseract tiene el idioma instalado, si no, fallback a deu
         if ! tesseract --list-langs | grep -q "^${TESS_LANG}$"; then
-            echo "    [!] Idioma '${TESS_LANG}' de Tesseract no disponible. Usando 'eng' como fallback."
-            TESS_LANG="eng"
+            TESS_LANG="deu"
         fi
         
         # Convertir página a imagen PNG temporal a 150 DPI
@@ -440,12 +518,30 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
     # 3. Generar los idiomas seleccionados para esta página
     for LANG in "${LANGS[@]}"; do
         FINAL_TXT="$WORKDIR/text_${LANG}_${PADDED_PAGE}.txt"
-        OUT_WAV="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.${LANG}.wav"
+        if [ "${AUDIO_OPTIMIZE:-0}" == "1" ]; then
+            OUT_WAV="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.optime.${LANG}.wav"
+            UNOPT_WAV="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.${LANG}.wav"
+        else
+            OUT_WAV="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.${LANG}.wav"
+            UNOPT_WAV=""
+        fi
         OUT_MP3="$OUT_DIR/${BOOK_NAME}.page-${PADDED_PAGE}.${LANG}.mp3"
         
         # Saltarse si ya existe en WAV o MP3 para evitar regeneración redundante
-        if [ -s "$OUT_WAV" ] || [ -s "$OUT_MP3" ]; then
+        if ([ -s "$OUT_WAV" ] || [ -s "$OUT_MP3" ]) && [ "${FORCE_RENEW_CACHE:-0}" != "1" ]; then
             echo "    [+] $LANG: Ya existe, saltando."
+            continue
+        fi
+
+        # Reutilización inteligente: Si ya existe el audio original sin comprimir y ahora se solicita optimizar
+        if [ "${AUDIO_OPTIMIZE:-0}" == "1" ] && [ -n "$UNOPT_WAV" ] && [ -s "$UNOPT_WAV" ] && [ "${FORCE_RENEW_CACHE:-0}" != "1" ]; then
+            echo "    ⚡ $LANG: Reutilizando audio existente para comprimir..."
+            if command -v sox >/dev/null 2>&1; then
+                sox "$UNOPT_WAV" -r 16000 -c 1 -b 8 "$OUT_WAV" 2>/dev/null || cp "$UNOPT_WAV" "$OUT_WAV"
+            else
+                cp "$UNOPT_WAV" "$OUT_WAV"
+            fi
+            echo "    [✔] $LANG: Comprimido y optimizado a partir del audio existente."
             continue
         fi
  
@@ -460,9 +556,27 @@ for (( page=START_PAGE; page<=END_PAGE; page++ )); do
         # Piper (genera .wav directo a destino, rápido y liviano)
         echo "    [*] $LANG: Generando audio..."
         MODEL="${MODELS[$LANG]}"
-        cat "$FINAL_TXT" | "$PIPER_EXE" --model "$MODEL" --output_file "$OUT_WAV" > /dev/null 2>&1
+        RAW_PAGE_WAV="$WORKDIR/raw_audio_${PADDED_PAGE}_${LANG}.wav"
+        if cat "$FINAL_TXT" | "$PIPER_EXE" --model "$MODEL" --output_file "$RAW_PAGE_WAV" > /dev/null 2>&1; then
+            if [ "${AUDIO_OPTIMIZE:-0}" == "1" ]; then
+                if command -v sox >/dev/null 2>&1; then
+                    sox "$RAW_PAGE_WAV" -r 16000 -c 1 -b 8 "$OUT_WAV" 2>/dev/null || cp "$RAW_PAGE_WAV" "$OUT_WAV"
+                    rm -f "$RAW_PAGE_WAV"
+                else
+                    mv "$RAW_PAGE_WAV" "$OUT_WAV"
+                fi
+                echo "    [✔] $LANG: Audio generado, comprimido y optimizado."
+            else
+                mv "$RAW_PAGE_WAV" "$OUT_WAV"
+                echo "    [✔] $LANG: Audio generado."
+            fi
+        fi
     done
-    echo "✔ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] procesada correctamente."
+    if [ "${AUDIO_OPTIMIZE:-0}" == "1" ]; then
+        echo "✔ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] procesada, comprimida y optimizada correctamente."
+    else
+        echo "✔ PÁGINA [$PADDED_PAGE / $TOTAL_PAGES] procesada correctamente."
+    fi
     ) &
 
     # Limit concurrent jobs
@@ -473,6 +587,76 @@ done
 
 # Wait for all background jobs to finish
 wait
+
+# Unir todos los WAVs de las páginas en archivos completos para cada idioma
+if command -v sox >/dev/null 2>&1; then
+    for L in "${LANGS[@]}"; do
+        wav_files=()
+        if [ "${AUDIO_OPTIMIZE:-0}" == "1" ]; then
+            FINAL_MERGED_WAV="$OUT_DIR/${BOOK_NAME}.optime.${L}.wav"
+            for f in "$OUT_DIR"/"${BOOK_NAME}".page-[0-9][0-9][0-9][0-9].optime."${L}".wav; do
+                [ -f "$f" ] && wav_files+=("$f")
+            done
+        else
+            FINAL_MERGED_WAV="$OUT_DIR/${BOOK_NAME}.${L}.wav"
+            for f in "$OUT_DIR"/"${BOOK_NAME}".page-[0-9][0-9][0-9][0-9]."${L}".wav; do
+                [ -f "$f" ] && wav_files+=("$f")
+            done
+        fi
+        if [ ${#wav_files[@]} -gt 0 ]; then
+            echo ""
+            echo "[+] Uniendo todas las páginas WAV para $L en un solo archivo: $(basename "$FINAL_MERGED_WAV")..."
+            sox "${wav_files[@]}" "$FINAL_MERGED_WAV" 2>/dev/null || true
+            echo "[!] Archivo único creado exitosamente en: $FINAL_MERGED_WAV"
+
+            # Partir para WhatsApp si fue solicitado agrupando páginas directamente en MP3 ligero (< 60 MB)
+            if [ "${WHATSAPP_SPLIT:-0}" == "1" ]; then
+                echo "📱 Agrupando páginas en partes MP3 para WhatsApp ($L) (límite: < 60 MB por parte)..."
+                WA_TARGET_DIR="$PORTABLE_ROOT/compartir-whatsapp/${BOOK_NAME}_${L}"
+                mkdir -p "$WA_TARGET_DIR"
+                max_wav_bytes=$(( 110 * 1024 * 1024 ))
+                current_batch=()
+                current_size=0
+                part_idx=1
+                
+                for wfile in "${wav_files[@]}"; do
+                    [ -f "$wfile" ] || continue
+                    fsize=$(stat -c%s "$wfile" 2>/dev/null || wc -c < "$wfile")
+                    
+                    if [ ${#current_batch[@]} -gt 0 ] && [ $(( current_size + fsize )) -gt $max_wav_bytes ]; then
+                        out_part=$(printf "%s/%s-%s-WhatsApp-Parte_%03d.mp3" "$WA_TARGET_DIR" "$BOOK_NAME" "$L" "$part_idx")
+                        echo "   📲 Creando Parte $part_idx (${#current_batch[@]} páginas, convirtiendo a MP3 liviano)..."
+                        if command -v ffmpeg >/dev/null 2>&1 && command -v sox >/dev/null 2>&1; then
+                            sox "${current_batch[@]}" -t wav - 2>/dev/null | ffmpeg -y -i - -c:a libmp3lame -b:a 64k -ar 22050 -ac 1 "$out_part" >/dev/null 2>&1 || true
+                        elif command -v sox >/dev/null 2>&1; then
+                            sox "${current_batch[@]}" -C 64 "$out_part" 2>/dev/null || true
+                        fi
+                        part_size=$(du -h "$out_part" 2>/dev/null | awk '{print $1}' || echo "OK")
+                        echo "      ✅ Parte $part_idx lista ($part_size)"
+                        part_idx=$(( part_idx + 1 ))
+                        current_batch=()
+                        current_size=0
+                    fi
+                    current_batch+=("$wfile")
+                    current_size=$(( current_size + fsize ))
+                done
+                
+                if [ ${#current_batch[@]} -gt 0 ]; then
+                    out_part=$(printf "%s/%s-%s-WhatsApp-Parte_%03d.mp3" "$WA_TARGET_DIR" "$BOOK_NAME" "$L" "$part_idx")
+                    echo "   📲 Creando Parte $part_idx (${#current_batch[@]} páginas, convirtiendo a MP3 liviano)..."
+                    if command -v ffmpeg >/dev/null 2>&1 && command -v sox >/dev/null 2>&1; then
+                        sox "${current_batch[@]}" -t wav - 2>/dev/null | ffmpeg -y -i - -c:a libmp3lame -b:a 64k -ar 22050 -ac 1 "$out_part" >/dev/null 2>&1 || true
+                    elif command -v sox >/dev/null 2>&1; then
+                        sox "${current_batch[@]}" -C 64 "$out_part" 2>/dev/null || true
+                    fi
+                    part_size=$(du -h "$out_part" 2>/dev/null | awk '{print $1}' || echo "OK")
+                    echo "      ✅ Parte $part_idx lista ($part_size)"
+                fi
+                echo "[!] ✅ Partes MP3 para WhatsApp para $L creadas exitosamente en: $WA_TARGET_DIR"
+            fi
+        fi
+    done
+fi
 
 # Compilar visor monolítico htm+audio una única vez al finalizar todas las páginas
 echo ""

@@ -27,8 +27,8 @@ def get_audio_sizes_for_book(book_name, total_pages):
     audio_sizes = {}  # page_num -> sum of audio file sizes for this page
     audio_files = {}  # page_num -> list of (lang, file_path)
     
-    # Audio pattern: <book_name>.page-<page_num>.<lang>.<ext>
-    audio_pattern = re.compile(rf"^{re.escape(book_name)}\.page-(\d+)\.(en|es|de)\.(mp3|wav)$", re.IGNORECASE)
+    # Audio pattern: <book_name>.page-<page_num>[.optime].<lang>.<ext>
+    audio_pattern = re.compile(rf"^{re.escape(book_name)}\.page-(\d+)(?:\.optime)?\.(en|es|de)\.(mp3|wav)$", re.IGNORECASE)
     
     for fname in os.listdir(audio_dir):
         match = audio_pattern.match(fname)

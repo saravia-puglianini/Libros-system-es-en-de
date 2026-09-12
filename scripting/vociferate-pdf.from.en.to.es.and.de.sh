@@ -120,9 +120,9 @@ echo "[+] Idiomas seleccionados para vociferar: ${LANGS[*]}"
 # --- Selección de motor de traducción ---
 if [ -z "${TRANSLATOR_SERVICE:-}" ]; then
     echo ""
-    echo "Seleccione el motor de traducción:"
+    echo "Seleccione si desea usar un servicio de google ...o un comando sin salir a internet para traducir:"
     echo "[0] google-translate (Internet required)"
-    echo "[1] apertium (No DRM, No internet optional)"
+    echo "[1] apertium (No DRM... No internet? no problem, internet is optional)"
     echo ""
     trans_service_choice="0"
     if [ -t 0 ]; then
@@ -147,6 +147,42 @@ if [ -z "${TRANSLATOR_SERVICE:-}" ]; then
         export TRANSLATOR_SERVICE="apertium"
     else
         export TRANSLATOR_SERVICE="google"
+    fi
+fi
+
+# --- Selección de optimización de audio ---
+if [ -z "${AUDIO_OPTIMIZE:-}" ]; then
+    echo ""
+    echo "Elija una optimización:"
+    echo ""
+    echo "[0] Comprimir brutalmente, pero compresiblemente audible"
+    echo "[1] No comprimir, tengo oido de músico, tengo discos grandes"
+    echo ""
+    opt_choice="0"
+    if [ -t 0 ]; then
+        while true; do
+            read -r -p "Seleccione opción [0/1] (Por defecto: 0): " input_opt || true
+            if [[ "$input_opt" == "1" ]]; then
+                opt_choice="1"
+                break
+            elif [[ "$input_opt" == "0" || -z "$input_opt" ]]; then
+                opt_choice="0"
+                break
+            else
+                echo "❌ Opción inválida. Intente de nuevo."
+            fi
+        done
+    else
+        opt_choice="0"
+        echo "[Auto] Seleccionado Comprimir brutalmente (0) debido a entrada no interactiva"
+    fi
+
+    if [[ "$opt_choice" == "0" ]]; then
+        echo ""
+        echo "De acuerdo se comprimirá brutalmente entonces ahorrará 75% de MB"
+        export AUDIO_OPTIMIZE="1"
+    else
+        export AUDIO_OPTIMIZE="0"
     fi
 fi
 
